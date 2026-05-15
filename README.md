@@ -1,6 +1,76 @@
 # Advanced Regression
 
-As we all know, a regression model is commonly built using Ordinary Least Squares (OLS).
+## Repository Structure
+
+```
+ml_advanced_regression/
+├── README.md
+├── requirements.txt
+├── advanced_regression.ipynb   # End-to-end demo on synthetic data, validated against sklearn
+├── ridge.py                    # Ridge (L2) — closed-form normal equation
+├── lasso.py                    # Lasso (L1) — coordinate descent + soft thresholding
+├── elastic_net.py              # Elastic Net (L1 + L2) — coordinate descent
+└── Images/                     # Diagrams used in this README
+```
+
+Each estimator is implemented from scratch with numpy — no `sklearn.linear_model` import. The class API matches the from-scratch modules in [`ml_linear_regression`](https://github.com/modelverseml/ml_linear_regression): `build_model()` to fit, `predict(X)`, and `get_parameters()` returning a DataFrame of (feature, coefficient) pairs.
+
+## Getting Started
+
+```bash
+git clone https://github.com/modelverseml/advanced-regression.git
+cd advanced-regression
+pip install -r requirements.txt
+jupyter notebook advanced_regression.ipynb
+```
+
+The notebook walks through all three models on `sklearn.datasets.make_regression` data, compares each manual implementation against the scikit-learn reference (they match to numerical precision), and plots regularisation paths + the test-MSE vs `alpha` trade-off.
+
+## Code Modules
+
+### Ridge — closed-form
+
+Ridge has a clean analytical solution because the L2 penalty is differentiable everywhere:
+
+```python
+from ridge import RidgeRegression
+
+model = RidgeRegression(X_train, y_train, alpha=1.0)
+model.build_model()                 # solves (X^T X + alpha I') beta = X^T y
+y_pred = model.predict(X_test)
+model.get_parameters()              # DataFrame of (feature, coefficient)
+```
+
+### Lasso — coordinate descent
+
+The L1 penalty isn't differentiable at zero, so there is no closed-form. We use coordinate descent: cycle through one coefficient at a time, applying the **soft-thresholding operator** to each per-coordinate sub-problem.
+
+```python
+from lasso import LassoRegression
+
+model = LassoRegression(X_train, y_train, alpha=1.0, max_iter=1000, tol=1e-4)
+model.build_model()
+model.get_parameters()              # many coefficients will be exactly 0 — feature selection
+```
+
+### Elastic Net — coordinate descent
+
+Same coordinate-descent loop as Lasso, but the L2 term adds a smooth shrinkage on top of L1's sparsity. The mix is controlled by `l1_ratio` ∈ [0, 1] (matches sklearn's convention):
+
+```python
+from elastic_net import ElasticNetRegression
+
+model = ElasticNetRegression(X_train, y_train, alpha=1.0, l1_ratio=0.5)
+model.build_model()
+```
+
+Special cases:
+- `l1_ratio=1` → pure Lasso (use `lasso.py` instead — same result)
+- `l1_ratio=0` → pure Ridge (use `ridge.py` instead — closed-form is faster)
+
+### Note on feature scaling
+
+For Lasso and Elastic Net, the magnitude of `alpha` is comparable across features only when the features are on the same scale. Standardise (e.g. with `StandardScaler`) before fitting if your features have very different units.
 
 $$
 RSS = \sum_{i=1}^{n} ( \hat{y_i} - y_i )^2
