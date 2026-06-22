@@ -124,11 +124,13 @@ $$
 \min_{\beta}\ \text{RSS} + \alpha \sum_{j=1}^p |\beta_j|
 $$
 
-**Elastic Net:** use both, with `l1_ratio` deciding the balance.
+**Elastic Net:** use both, with `l1_ratio` (written as $r$ below) deciding the balance.
 
 $$
-\min_{\beta}\ \text{RSS} + \alpha \left[ \text{l1\_ratio} \sum_{j=1}^p |\beta_j| + \tfrac{1 - \text{l1\_ratio}}{2} \sum_{j=1}^p \beta_j^2 \right]
+\min_{\beta}\ \text{RSS} + \alpha \left[ r \sum_{j=1}^p |\beta_j| + \frac{1 - r}{2} \sum_{j=1}^p \beta_j^2 \right]
 $$
+
+where $r$ is `l1_ratio` in the code: $r = 1$ is pure Lasso, $r = 0$ is pure Ridge.
 
 ### How they are solved
 
