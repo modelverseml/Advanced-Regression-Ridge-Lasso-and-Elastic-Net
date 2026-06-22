@@ -21,6 +21,11 @@ env/
 # Jupyter
 .ipynb_checkpoints/
 
+# Generated walkthrough plots
+Images/coefficients_by_penalty.png
+Images/regularization_paths.png
+Images/test_mse_vs_alpha.png
+
 # IDE
 .vscode/
 .idea/

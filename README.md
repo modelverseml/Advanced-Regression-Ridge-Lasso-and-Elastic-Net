@@ -1,179 +1,160 @@
-# Advanced Regression
+# Advanced Regression — Ridge, Lasso & Elastic Net
 
-## Repository Structure
+Plain linear regression (OLS) can struggle when you have many features or
+features that are correlated: it gives big, unstable coefficients and overfits
+the training data. **Regularized** regression fixes this by adding a penalty
+that keeps the coefficients small.
+
+This repo implements the three standard regularized models from scratch with
+NumPy — no `sklearn.linear_model` — and checks each one against scikit-learn
+(they match to numerical precision).
+
+## A few terms first
+
+If some of these are new, here is the short version:
+
+- **Coefficient (β):** the weight a model gives a feature. Bigger weight = the
+  feature moves the prediction more.
+- **Overfitting:** the model memorises noise in the training data and does
+  worse on new data. Large coefficients are a common symptom.
+- **Regularization:** add a penalty on the size of the coefficients to the
+  thing we minimise, so the model prefers smaller, simpler weights.
+- **Penalty strength `alpha`:** how hard we push coefficients toward zero.
+  `alpha = 0` is ordinary regression; larger `alpha` = more shrinkage.
+- **L1 penalty (sum of |β|):** can push some coefficients to *exactly* zero,
+  which drops those features. This is **feature selection**.
+- **L2 penalty (sum of β²):** shrinks every coefficient toward zero but never
+  exactly to zero.
+- **Multicollinearity:** two or more features carry the same information
+  (highly correlated). It makes OLS coefficients jump around.
+
+## The three models at a glance
+
+| Model | Penalty | What it does | Use it when |
+|---|---|---|---|
+| **Ridge** | L2 | shrinks all coefficients, keeps them all | features are correlated; you want stability |
+| **Lasso** | L1 | shrinks and zeroes out weak features | you want a smaller, automatically selected set of features |
+| **Elastic Net** | L1 + L2 | a mix of both, set by `l1_ratio` | many correlated features and you still want some selection |
+
+<p align="center"><img src="Images/regularization.webp" alt="regularization" width="50%"/></p>
+
+## Repository structure
 
 ```
-ml_advanced_regression/
+Advanced-Regression/
 ├── README.md
 ├── requirements.txt
-├── advanced_regression.ipynb   # End-to-end demo on synthetic data, validated against sklearn
-├── ridge.py                    # Ridge (L2) — closed-form normal equation
-├── lasso.py                    # Lasso (L1) — coordinate descent + soft thresholding
-├── elastic_net.py              # Elastic Net (L1 + L2) — coordinate descent
-└── Images/                     # Diagrams used in this README
+├── main.py                       # runs the full walkthrough
+├── advanced_regression/          # the package (importable)
+│   ├── __init__.py
+│   ├── ridge.py                  # Ridge (L2), closed-form
+│   ├── lasso.py                  # Lasso (L1), coordinate descent
+│   └── elastic_net.py            # Elastic Net (L1 + L2), coordinate descent
+├── examples/
+│   └── walkthrough.py            # end-to-end demo, validated against sklearn
+└── Images/
 ```
 
-Each estimator is implemented from scratch with numpy — no `sklearn.linear_model` import. The class API matches the from-scratch modules in [`ml_linear_regression`](https://github.com/modelverseml/ml_linear_regression): `build_model()` to fit, `predict(X)`, and `get_parameters()` returning a DataFrame of (feature, coefficient) pairs.
+Every model shares the same small interface: `build_model()` to fit,
+`predict(X)`, and `get_parameters()` returning a `(feature, coefficient)` table.
 
-## Getting Started
+## Getting started
 
 ```bash
-git clone https://github.com/modelverseml/advanced-regression.git
-cd advanced-regression
+git clone https://github.com/modelverseml/Advanced-Regression.git
+cd Advanced-Regression
 pip install -r requirements.txt
-jupyter notebook advanced_regression.ipynb
+
+# Run the full walkthrough (data -> 3 models -> compare vs sklearn -> alpha sweep)
+python main.py
+
+# Same, plus save the diagnostic plots into Images/
+python main.py --plot
 ```
 
-The notebook walks through all three models on `sklearn.datasets.make_regression` data, compares each manual implementation against the scikit-learn reference (they match to numerical precision), and plots regularisation paths + the test-MSE vs `alpha` trade-off.
-
-## Code Modules
-
-### Ridge — closed-form
-
-Ridge has a clean analytical solution because the L2 penalty is differentiable everywhere:
+## Using the models
 
 ```python
-from ridge import RidgeRegression
+from advanced_regression import RidgeRegression, LassoRegression, ElasticNetRegression
 
+# Ridge (L2) — has a closed-form solution
 model = RidgeRegression(X_train, y_train, alpha=1.0)
-model.build_model()                 # solves (X^T X + alpha I') beta = X^T y
-y_pred = model.predict(X_test)
-model.get_parameters()              # DataFrame of (feature, coefficient)
-```
-
-### Lasso — coordinate descent
-
-The L1 penalty isn't differentiable at zero, so there is no closed-form. We use coordinate descent: cycle through one coefficient at a time, applying the **soft-thresholding operator** to each per-coordinate sub-problem.
-
-```python
-from lasso import LassoRegression
-
-model = LassoRegression(X_train, y_train, alpha=1.0, max_iter=1000, tol=1e-4)
 model.build_model()
-model.get_parameters()              # many coefficients will be exactly 0 — feature selection
-```
+y_pred = model.predict(X_test)
+model.get_parameters()        # (feature, coefficient) table
 
-### Elastic Net — coordinate descent
+# Lasso (L1) — many coefficients come out exactly 0
+model = LassoRegression(X_train, y_train, alpha=1.0, max_iter=5000, tol=1e-6)
+model.build_model()
 
-Same coordinate-descent loop as Lasso, but the L2 term adds a smooth shrinkage on top of L1's sparsity. The mix is controlled by `l1_ratio` ∈ [0, 1] (matches sklearn's convention):
-
-```python
-from elastic_net import ElasticNetRegression
-
+# Elastic Net (L1 + L2) — l1_ratio mixes the two penalties
 model = ElasticNetRegression(X_train, y_train, alpha=1.0, l1_ratio=0.5)
 model.build_model()
 ```
 
-Special cases:
-- `l1_ratio=1` → pure Lasso (use `lasso.py` instead — same result)
-- `l1_ratio=0` → pure Ridge (use `ridge.py` instead — closed-form is faster)
+`l1_ratio` runs from 0 to 1: `l1_ratio = 1` is pure Lasso, `l1_ratio = 0` is
+pure Ridge (for that case use `RidgeRegression` — its closed form is faster).
 
-### Note on feature scaling
+**Scale your features first.** L1 and L2 penalise the raw size of each
+coefficient, so a single `alpha` is only fair when the features are on the same
+scale. Standardise (e.g. `sklearn.preprocessing.StandardScaler`) before fitting.
+The walkthrough does this.
 
-For Lasso and Elastic Net, the magnitude of `alpha` is comparable across features only when the features are on the same scale. Standardise (e.g. with `StandardScaler`) before fitting if your features have very different units.
+## The math
 
-$$
-RSS = \sum_{i=1}^{n} ( \hat{y_i} - y_i )^2
-$$
-
-$$
-\arg \min_{\beta_0 \dots \beta_p}\ \sum_{i=1}^n\left( y_i - \beta_0 - \sum_{j=1}^p(\beta_j X_{ij}) \right)^2
-$$
-
-The objective of OLS is to estimate the coefficients β that minimize the Sum of Squared Errors (SSE).
-
-More specifically, the OLS solution can be obtained using:
-- Closed-form (analytical) solutions
-- Iterative optimization methods such as Gradient Descent
-<br>
-
-**Limitations of Ordinary Least Squares**:
-
-While OLS is simple and effective in many cases, it suffers from several important limitations:
-
-- Multicollinearity : OLS does not account for multicollinearity. When predictors are highly correlated, the estimated coefficients become unstable and sensitive to small changes in the data.
-
-- Overfitting : As the number of predictors increases—or when predictors are strongly correlated—the model may fit noise instead of the underlying pattern, leading to poor generalization on unseen data.
-
-
-- High Variance : OLS tends to assign large coefficient values to noisy or irrelevant features. These large coefficients increase model variance, making predictions highly sensitive to minor fluctuations in the training data and reducing model stability.
-
-This is why regularized regression techniques such as Ridge, Lasso, and Elastic Net are introduced—to control model complexity, reduce variance, and improve generalization performance.
-
-<br>
-
-### What is Regularization
-
-Regularization is a technique used to prevent model overfitting by adding a penalty term to the loss function.
-This penalty discourages large coefficient values, helping the model learn simpler and more generalizable patterns.
-
-Common Regularization Techniques:
- - Lasso (Least Absolute Shrinkage and Selection Operator)
-   - Also known as L1 Regularization
- - Ridge (Tikhonov Regularization)
-   - Also known as L2 Regularization
- - Elastic Net
-   - A combination of Lasso (L1) and Ridge (L2) regularization
-
-<br>
-  
-  <p align="center"><img src="Images/regularization.webp" alt="regularization" width="50%"/></p>
-  
-<br><br>
-
-## Lasso (Least Absolute Shrinkage and Selection Operator)
-
-Mathematical equation
-
-RSS + $\lambda$ * (Sum of absolute value of the magnitude of coefficients)
+OLS picks the coefficients that minimise the sum of squared errors (RSS):
 
 $$
-\arg \min_{\beta_0 \dots \beta_p}\ \sum_{i=1}^n\left( y_i - \beta_0 - \sum_{j=1}^p(\beta_j X_{ij}) \right)^2 + \lambda \sum_{j=1}^p |\beta_j|
+\min_{\beta}\ \sum_{i=1}^n\left( y_i - \beta_0 - \sum_{j=1}^p \beta_j X_{ij} \right)^2
 $$
 
-- By adding the L1 regularization term, LASSO regression shrinks coefficient values toward zero.
-- When the regularization parameter λ is sufficiently large, some coefficients are driven exactly to zero.
-  - This happens because a larger 𝜆 increases the penalty, encouraging the optimizer to reduce or eliminate less important coefficients in order to minimize the overall objective function.
-- As a result, features with zero coefficients are effectively removed from the model, making LASSO a powerful technique for feature selection.
+Each regularized model adds a penalty term on top, scaled by `alpha` (often
+written λ):
 
-
-<br><br>
-
-## Ridge Regression (Tikhonov Regularization)
-
-Mathematical equation:
-
-RSS + $\lambda$ * (Sum of squares of the magnitude of coefficients)
+**Ridge (L2):** add the sum of squared coefficients.
 
 $$
-\arg \min_{\beta_0 \dots \beta_p}\ \sum_{i=1}^n\left( y_i - \beta_0 - \sum_{j=1}^p(\beta_j X_{ij}) \right)^2 + \lambda \sum_{j=1}^p \beta_j^2
+\min_{\beta}\ \text{RSS} + \alpha \sum_{j=1}^p \beta_j^2
 $$
 
-- By adding the L2 regularization term, Ridge regression **shrinks coefficient values toward zero** but never exactly to zero.  
-- Ridge is particularly useful when dealing with **multicollinearity** (highly correlated features), as it distributes coefficient weights more evenly.  
-- Unlike LASSO, Ridge does **not perform feature selection**, because no coefficients are set exactly to zero.  
-
-<br><br>
-
-
-## Elastic Net Regression
-
-Mathematical equation:
-
-Combination of L1 (Lasso) and L2 (Ridge) penalties:
+**Lasso (L1):** add the sum of absolute coefficients. The sharp corner of
+`|β|` at zero is what lets it set coefficients to exactly zero.
 
 $$
-\hat{\beta} = \arg \min_{\beta_0, \dots, \beta_p} \sum_{i=1}^n \left( y_i - \beta_0 - \sum_{j=1}^p \beta_j X_{ij} \right)^2 + \lambda \left[ \alpha \sum_{j=1}^p |\beta_j| + \frac{1-\alpha}{2} \sum_{j=1}^p \beta_j^2 \right]
+\min_{\beta}\ \text{RSS} + \alpha \sum_{j=1}^p |\beta_j|
 $$
 
-Where:
+**Elastic Net:** use both, with `l1_ratio` deciding the balance.
 
-- `λ ≥ 0` controls the **overall strength of regularization**  
-- `α ∈ [0,1]` controls the **mix between L1 (Lasso) and L2 (Ridge)** penalties
+$$
+\min_{\beta}\ \text{RSS} + \alpha \left[ \text{l1\_ratio} \sum_{j=1}^p |\beta_j| + \tfrac{1 - \text{l1\_ratio}}{2} \sum_{j=1}^p \beta_j^2 \right]
+$$
 
-**Key Points**
-- Combines the benefits of **Lasso (feature selection)** and **Ridge (stability for correlated features)**.  
-- Useful when there are **many correlated features**, as Lasso may arbitrarily select only one.  
-- Can **shrink some coefficients to zero** while stabilizing correlated predictors.  
-- Adjusting `α` balances between **sparsity** (`α → 1`) and **stability** (`α → 0`). 
+### How they are solved
 
+- **Ridge** is differentiable everywhere, so there is a closed-form formula:
+  `β = (XᵀX + αI)⁻¹ Xᵀy` (the intercept is left unpenalised). See
+  [`ridge.py`](advanced_regression/ridge.py).
+- **Lasso and Elastic Net** have the non-differentiable `|β|` term, so there is
+  no formula. They use **coordinate descent**: update one coefficient at a
+  time, each step using the *soft-thresholding* rule
+  `soft(x, t) = sign(x)·max(|x| − t, 0)`, which is exactly what shrinks small
+  coefficients to zero. See [`lasso.py`](advanced_regression/lasso.py) and
+  [`elastic_net.py`](advanced_regression/elastic_net.py).
+
+## What the walkthrough shows
+
+Running `python main.py` on synthetic data (10 features, only 5 of them
+actually useful) demonstrates the expected behaviour:
+
+- All three from-scratch models match scikit-learn to ~6 decimal places.
+- Lasso sets the 5 useless features to exactly 0; Ridge keeps all 10 but small;
+  Elastic Net does a mix.
+- The `alpha` sweep shows the bias–variance trade-off: too small overfits, too
+  large underfits, and there is a sweet spot in between.
+
+With `--plot`, three figures are saved to `Images/`: coefficients per penalty,
+the regularization paths (coefficients vs `alpha`), and test MSE vs `alpha`.
+
+> In a real project, pick `alpha` with k-fold cross-validation rather than a
+> single train/test split.
